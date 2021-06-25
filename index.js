@@ -1,5 +1,5 @@
 // require the discord.js module
-import { Client } from "discord.js";
+import { Client, WebhookClient } from "discord.js";
 import { config } from "dotenv";
 config();
 import {
@@ -9,6 +9,7 @@ import {
   checkAccountBalance,
   checkSingle,
 } from "./binance.js";
+import { postMessageToDiscord } from "./utils.js";
 
 // create a new Discord client
 const client = new Client();
@@ -18,12 +19,27 @@ let playChannel;
 // when the client is ready, run this code
 // this event will only trigger one time after logging in
 // var for global use
+//run test on 15m, 30m, 1h, 4h
 let botStatus = false;
-let botConfig = {
-  initialBudget: 1000,
-  maxOrder: 200,
-  botHolding: [],
-};
+class botConfig {
+  constructor(initialBudget, maxOrder, botHolding, botType) {
+    //constructor function
+    this.initialBudget = initialBudget;
+    this.maxOrder = maxOrder;
+    this.botHolding = botHolding;
+    this.botType = botType;
+  }
+}
+let bot15m = new botConfig(1000, 200, [], "15m");
+let bot30m = new botConfig(1000, 200, [], "30m");
+let bot1h = new botConfig(1000, 200, [], "1h");
+let bot4h = new botConfig(1000, 200, [], "4h");
+console.log(bot15m, bot30m, bot1h, bot4h);
+// {
+//   initialBudget: 1000,
+//   maxOrder: 200,
+//   botHolding: [],
+// };
 // ****
 
 const { btcPrice, balance, orders } = await BinanceTrading("BTCUSDT"); //initiate data
@@ -69,6 +85,19 @@ client.on("message", async (message) => {
       playChannel.send(
         `bot is running now. The default setting is: initial budget ${botConfig.initialBudget}; max single order ${botConfig.maxOrder}`
       );
+    }
+  } else if (message.content.includes("!pushMessage")) {
+    const webhook = new WebhookClient(
+      851959636785496135n,
+      "7dlAHw1y_IpHP-n-cuoiqxjCJrmg1uKv0DVBY_WUFZF99xL9dCDEk094tu-00qI1dOjx"
+    );
+    try {
+      const response = await webhook.send(
+        message.content.substring(13, message.content.length - 1)
+      );
+      console.log(`sent message ${response}`);
+    } catch (e) {
+      console.log("error when sending webhook message", e);
     }
   }
   if (message.webhookID) {

@@ -89,7 +89,7 @@ const BinanceTrading = async (symbol) => {
     let btcPrice = await checkSingle(symbol);
     let accountBalance = await checkAccountBalance();
     let orders = await openOrders();
-    websocketChart(symbol);
+    // websocketChart(symbol);
     // will add all pairs price here
     // spotPrice = await spotPrice();
     return {

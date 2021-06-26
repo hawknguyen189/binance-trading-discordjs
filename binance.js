@@ -26,7 +26,7 @@ let bot15m = new botConfig(1000, 200, [], "15m");
 let bot30m = new botConfig(1000, 200, [], "30m");
 let bot1h = new botConfig(1000, 200, [], "1h");
 let bot4h = new botConfig(1000, 200, [], "4h");
-console.log(bot15m, bot30m, bot1h, bot4h);
+
 //**************** */
 //configuring and running bots
 const toggleBot = async () => {
@@ -51,7 +51,7 @@ const checkBot = async () => {
 };
 
 const botController = async (signal) => {
-  if (botStatus) {
+  if (botStatus && signal.interval.length < 6) {
     switch (parseInt(signal.interval)) {
       case 15:
         signal.interval = "15m";
@@ -67,73 +67,74 @@ const botController = async (signal) => {
     let spotPrice = marketsPrice[signal.ticker].close;
     console.log("spot price is", spotPrice);
     console.log("interval is", signal.interval);
+    const foundBot = eval("bot" + signal.interval);
     //check available balance & budget
     // const availBal = parseFloat(accountBalance.find(e => e.symbol === "USDT").available).toFixed(2);
-    const availBal = botConfig.initialBudget; //use this for virtual run
+    const availBal = foundbot.initialBudget; //use this for virtual run
     const threshold = 0.03; //default threshold is 3%
-    // if (signal.type.toUpperCase() === "BUY") {
-    //   if (
-    //     parseFloat(spotPrice[signal.ticker]).toFixed(5) <=
-    //     parseFloat(signal.price) * (1 + threshold)
-    //   ) {
-    //     //buy the ticker or its corresponding leverage token on binance
-    //     if (signal.ticker.includes("UPUSDT")) {
-    //       //it's a leverage token
-    //       botConfig.botHolding.push({
-    //         ticker: signal.ticker,
-    //         price: spotPrice[signal.ticker],
-    //         amount: botConfig.maxOrder / spotPrice[signal.ticker],
-    //       });
-    //       botConfig.initialBudget -= botConfig.maxOrder;
-    //       playChannel.send(
-    //         `bot is buying ${signal.ticker} @ spot price ${parseFloat(
-    //           spotPrice[signal.ticker]
-    //         ).toFixed(2)} - total amount ${parseFloat(
-    //           botConfig.maxOrder / spotPrice[signal.ticker]
-    //         ).toFixed(2)}`
-    //       );
-    //     } else {
-    //       //not a leverage token
-    //       console.log("It's not a leverage token");
-    //     }
-    //   }
-    // } else {
-    //   //type sell
-    //   if (
-    //     parseFloat(spotPrice[signal.ticker]).toFixed(5) >=
-    //     parseFloat(signal.price) * (1 + threshold)
-    //   ) {
-    //     //buy the ticker or its corresponding leverage token on binance
-    //     if (signal.ticker.includes("DOWNUSDT")) {
-    //       //it's a leverage token
-    //       botConfig.botHolding.push({
-    //         ticker: signal.ticker,
-    //         price: spotPrice[signal.ticker],
-    //         amount: botConfig.maxOrder / spotPrice[signal.ticker],
-    //       });
-    //       botConfig.initialBudget -= botConfig.maxOrder;
-    //       playChannel.send(
-    //         `bot is buying ${signal.ticker} @ spot price ${parseFloat(
-    //           spotPrice[signal.ticker]
-    //         ).toFixed(2)} - total amount ${parseFloat(
-    //           botConfig.maxOrder / spotPrice[signal.ticker]
-    //         ).toFixed(2)}`
-    //       );
-    //     } else {
-    //       //not a leverage token
-    //       console.log("It's not a leverage token");
-    //     }
-    //   }
-    // }
-    // console.log(botConfig);
+    if (signal.type.toUpperCase() === "BUY") {
+      if (
+        parseFloat(spotPrice[signal.ticker]).toFixed(5) <=
+        parseFloat(signal.price) * (1 + threshold)
+      ) {
+        //buy the ticker or its corresponding leverage token on binance
+        if (signal.ticker.includes("UPUSDT")) {
+          //it's a leverage token
+          foundbot.botHolding.push({
+            ticker: signal.ticker,
+            price: spotPrice[signal.ticker],
+            amount: foundbot.maxOrder / spotPrice[signal.ticker],
+          });
+          foundbot.initialBudget -= foundbot.maxOrder;
+          playChannel.send(
+            `bot is buying ${signal.ticker} @ spot price ${parseFloat(
+              spotPrice[signal.ticker]
+            ).toFixed(2)} - total amount ${parseFloat(
+              foundbot.maxOrder / spotPrice[signal.ticker]
+            ).toFixed(2)}`
+          );
+        } else {
+          //not a leverage token
+          console.log("It's not a leverage token");
+        }
+      }
+    } else {
+      //type sell
+      if (
+        parseFloat(spotPrice[signal.ticker]).toFixed(5) >=
+        parseFloat(signal.price) * (1 + threshold)
+      ) {
+        //buy the ticker or its corresponding leverage token on binance
+        if (signal.ticker.includes("DOWNUSDT")) {
+          //it's a leverage token
+          foundbot.botHolding.push({
+            ticker: signal.ticker,
+            price: spotPrice[signal.ticker],
+            amount: foundbot.maxOrder / spotPrice[signal.ticker],
+          });
+          foundbot.initialBudget -= foundbot.maxOrder;
+          playChannel.send(
+            `bot is buying ${signal.ticker} @ spot price ${parseFloat(
+              spotPrice[signal.ticker]
+            ).toFixed(2)} - total amount ${parseFloat(
+              foundbot.maxOrder / spotPrice[signal.ticker]
+            ).toFixed(2)}`
+          );
+        } else {
+          //not a leverage token
+          console.log("It's not a leverage token");
+        }
+      }
+    }
+    console.log(foundBot);
     let botMessage = "Bot is holding: \n";
-    // botConfig.botHolding.forEach(
+    // foundbot.botHolding.forEach(
     //   (e) =>
     //     (botMessage += `${e.ticker} @ ${parseFloat(e.price).toFixed(
     //       2
     //     )} - total amount ${parseFloat(e.amount).toFixed(2)} \n`)
     // );
-    // botMessage += `Total budget ${botConfig.initialBudget}`;
+    // botMessage += `Total budget ${foundbot.initialBudget}`;
     return botMessage;
   }
 };

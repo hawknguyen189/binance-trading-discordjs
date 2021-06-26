@@ -10,7 +10,7 @@ import {
   checkSingle,
   toggleBot,
   botController,
-  foobar,
+  checkBot,
 } from "./binance.js";
 import { postMessageToDiscord } from "./utils.js";
 
@@ -58,7 +58,7 @@ client.on("message", async (message) => {
   } else if (message.content.includes("!togglebot")) {
     // playChannel.send(toggleBot());
     console.log(toggleBot());
-  } else if (message.content.includes("!pushMessage")) {
+  } else if (message.content.includes("!pushmessage")) {
     const webhookKey = process.env["DISCORD_WEBHOOK"];
     const webhook = new WebhookClient(858094812120612874n, webhookKey);
     try {
@@ -69,6 +69,8 @@ client.on("message", async (message) => {
     } catch (e) {
       console.log("error when sending webhook message", e);
     }
+  } else if (message.content === "!checkbot") {
+    console.log(checkBot());
   }
   if (message.webhookID) {
     // console.log(message.content)

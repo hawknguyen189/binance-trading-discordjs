@@ -20,6 +20,8 @@ class botConfig {
 // var for global use
 //run test on 15m, 30m, 1h, 4h
 let botStatus = false;
+let marketsPrice = {};
+let subList = {};
 let bot15m = new botConfig(1000, 200, [], "15m");
 let bot30m = new botConfig(1000, 200, [], "30m");
 let bot1h = new botConfig(1000, 200, [], "1h");
@@ -33,92 +35,107 @@ const toggleBot = async () => {
   if (botStatus) {
     botStatus = false;
     await terminateWebsocket("!miniTicker@arr");
-    response = `bot is off now. Current budget is ${botConfig.initialBudget}.`;
+    // response = `bot is off now. Current budget is ${botConfig.initialBudget}.`;
   } else {
     botStatus = true;
     await websocketMiniTicker("BTCUSDT");
-    response = `bot is running now. The default setting is: initial budget ${botConfig.initialBudget}; max single order ${botConfig.maxOrder}`;
+    // response = `bot is running now. The default setting is: initial budget ${botConfig.initialBudget}; max single order ${botConfig.maxOrder}`;
   }
   return response;
 };
 
+const checkBot = async () => {
+  return botStatus
+    ? `bot is running, websocket ${Object.keys(subList)[0]}`
+    : "bot is not running";
+};
+
 const botController = async (signal) => {
-  //check binance price
-  let spotPrice = 0;
-  try {
-    spotPrice = await checkSingle(signal.ticker);
-  } catch (e) {
-    console.log(`error checking ${signal.ticker}`);
-  }
-  console.log("spot price is", spotPrice);
-  //check available balance & budget
-  // const availBal = parseFloat(accountBalance.find(e => e.symbol === "USDT").available).toFixed(2);
-  const availBal = botConfig.initialBudget; //use this for virtual run
-  const threshold = 0.03; //default threshold is 3%
-  if (signal.type.toUpperCase() === "BUY") {
-    if (
-      parseFloat(spotPrice[signal.ticker]).toFixed(5) <=
-      parseFloat(signal.price) * (1 + threshold)
-    ) {
-      //buy the ticker or its corresponding leverage token on binance
-      if (signal.ticker.includes("UPUSDT")) {
-        //it's a leverage token
-        botConfig.botHolding.push({
-          ticker: signal.ticker,
-          price: spotPrice[signal.ticker],
-          amount: botConfig.maxOrder / spotPrice[signal.ticker],
-        });
-        botConfig.initialBudget -= botConfig.maxOrder;
-        playChannel.send(
-          `bot is buying ${signal.ticker} @ spot price ${parseFloat(
-            spotPrice[signal.ticker]
-          ).toFixed(2)} - total amount ${parseFloat(
-            botConfig.maxOrder / spotPrice[signal.ticker]
-          ).toFixed(2)}`
-        );
-      } else {
-        //not a leverage token
-        console.log("It's not a leverage token");
-      }
+  if (botStatus) {
+    switch (parseInt(signal.interval)) {
+      case 15:
+        signal.interval = "15m";
+        break;
+      case 30:
+        signal.interval = "30m";
+        break;
+      case 60:
+        signal.interval = "1h";
+        break;
     }
-  } else {
-    //type sell
-    if (
-      parseFloat(spotPrice[signal.ticker]).toFixed(5) >=
-      parseFloat(signal.price) * (1 + threshold)
-    ) {
-      //buy the ticker or its corresponding leverage token on binance
-      if (signal.ticker.includes("DOWNUSDT")) {
-        //it's a leverage token
-        botConfig.botHolding.push({
-          ticker: signal.ticker,
-          price: spotPrice[signal.ticker],
-          amount: botConfig.maxOrder / spotPrice[signal.ticker],
-        });
-        botConfig.initialBudget -= botConfig.maxOrder;
-        playChannel.send(
-          `bot is buying ${signal.ticker} @ spot price ${parseFloat(
-            spotPrice[signal.ticker]
-          ).toFixed(2)} - total amount ${parseFloat(
-            botConfig.maxOrder / spotPrice[signal.ticker]
-          ).toFixed(2)}`
-        );
-      } else {
-        //not a leverage token
-        console.log("It's not a leverage token");
-      }
-    }
+    //check binance price
+    let spotPrice = marketsPrice[signal.ticker].close;
+    console.log("spot price is", spotPrice);
+    console.log("interval is", signal.interval);
+    //check available balance & budget
+    // const availBal = parseFloat(accountBalance.find(e => e.symbol === "USDT").available).toFixed(2);
+    const availBal = botConfig.initialBudget; //use this for virtual run
+    const threshold = 0.03; //default threshold is 3%
+    // if (signal.type.toUpperCase() === "BUY") {
+    //   if (
+    //     parseFloat(spotPrice[signal.ticker]).toFixed(5) <=
+    //     parseFloat(signal.price) * (1 + threshold)
+    //   ) {
+    //     //buy the ticker or its corresponding leverage token on binance
+    //     if (signal.ticker.includes("UPUSDT")) {
+    //       //it's a leverage token
+    //       botConfig.botHolding.push({
+    //         ticker: signal.ticker,
+    //         price: spotPrice[signal.ticker],
+    //         amount: botConfig.maxOrder / spotPrice[signal.ticker],
+    //       });
+    //       botConfig.initialBudget -= botConfig.maxOrder;
+    //       playChannel.send(
+    //         `bot is buying ${signal.ticker} @ spot price ${parseFloat(
+    //           spotPrice[signal.ticker]
+    //         ).toFixed(2)} - total amount ${parseFloat(
+    //           botConfig.maxOrder / spotPrice[signal.ticker]
+    //         ).toFixed(2)}`
+    //       );
+    //     } else {
+    //       //not a leverage token
+    //       console.log("It's not a leverage token");
+    //     }
+    //   }
+    // } else {
+    //   //type sell
+    //   if (
+    //     parseFloat(spotPrice[signal.ticker]).toFixed(5) >=
+    //     parseFloat(signal.price) * (1 + threshold)
+    //   ) {
+    //     //buy the ticker or its corresponding leverage token on binance
+    //     if (signal.ticker.includes("DOWNUSDT")) {
+    //       //it's a leverage token
+    //       botConfig.botHolding.push({
+    //         ticker: signal.ticker,
+    //         price: spotPrice[signal.ticker],
+    //         amount: botConfig.maxOrder / spotPrice[signal.ticker],
+    //       });
+    //       botConfig.initialBudget -= botConfig.maxOrder;
+    //       playChannel.send(
+    //         `bot is buying ${signal.ticker} @ spot price ${parseFloat(
+    //           spotPrice[signal.ticker]
+    //         ).toFixed(2)} - total amount ${parseFloat(
+    //           botConfig.maxOrder / spotPrice[signal.ticker]
+    //         ).toFixed(2)}`
+    //       );
+    //     } else {
+    //       //not a leverage token
+    //       console.log("It's not a leverage token");
+    //     }
+    //   }
+    // }
+    // console.log(botConfig);
+    let botMessage = "Bot is holding: \n";
+    // botConfig.botHolding.forEach(
+    //   (e) =>
+    //     (botMessage += `${e.ticker} @ ${parseFloat(e.price).toFixed(
+    //       2
+    //     )} - total amount ${parseFloat(e.amount).toFixed(2)} \n`)
+    // );
+    // botMessage += `Total budget ${botConfig.initialBudget}`;
+    return botMessage;
   }
-  console.log(botConfig);
-  let botMessage = "Bot is holding: \n";
-  botConfig.botHolding.forEach(
-    (e) =>
-      (botMessage += `${e.ticker} @ ${parseFloat(e.price).toFixed(
-        2
-      )} - total amount ${parseFloat(e.amount).toFixed(2)} \n`)
-  );
-  botMessage += `Total budget ${botConfig.initialBudget}`;
-  playChannel.send(botMessage);
 };
 
 //calling Binance API
@@ -190,8 +207,11 @@ const websocketMiniTicker = async (ticker) => {
   //no weight limit on websocket but 5 live stream/ip
   try {
     const response = await binance.websockets.miniTicker((markets) => {
-      trailingStop(markets[ticker].close);
+      marketsPrice = { ...markets };
+      // trailingStop(markets[ticker].close);
+      console.log(markets[ticker]?.close);
     });
+    subList = await binance.websockets.subscriptions();
   } catch (e) {
     console.log("error establishing websockets !miniTicker@arr");
   }
@@ -201,12 +221,12 @@ const terminateWebsocket = async (websocket) => {
     // const foo = await binance.websockets.subscriptions();
     // console.log("subscription check", foo);
     const response = await binance.websockets.terminate(websocket);
+    subList = await binance.websockets.subscriptions();
   } catch (e) {
     console.log("error when terminating websocket");
   }
 };
 //***********************/
-
 // initiate binance data
 const BinanceTrading = async (symbol) => {
   try {
@@ -234,5 +254,5 @@ export {
   checkSingle,
   botController,
   toggleBot,
-  foobar,
+  checkBot,
 };

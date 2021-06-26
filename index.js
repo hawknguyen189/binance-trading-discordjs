@@ -8,6 +8,9 @@ import {
   openOrders,
   checkAccountBalance,
   checkSingle,
+  toggleBot,
+  botController,
+  foobar,
 } from "./binance.js";
 import { postMessageToDiscord } from "./utils.js";
 
@@ -18,32 +21,10 @@ let playChannel;
 
 // when the client is ready, run this code
 // this event will only trigger one time after logging in
-// var for global use
-//run test on 15m, 30m, 1h, 4h
-let botStatus = false;
-class botConfig {
-  constructor(initialBudget, maxOrder, botHolding, botType) {
-    //constructor function
-    this.initialBudget = initialBudget;
-    this.maxOrder = maxOrder;
-    this.botHolding = botHolding;
-    this.botType = botType;
-  }
-}
-let bot15m = new botConfig(1000, 200, [], "15m");
-let bot30m = new botConfig(1000, 200, [], "30m");
-let bot1h = new botConfig(1000, 200, [], "1h");
-let bot4h = new botConfig(1000, 200, [], "4h");
-console.log(bot15m, bot30m, bot1h, bot4h);
-// {
-//   initialBudget: 1000,
-//   maxOrder: 200,
-//   botHolding: [],
-// };
 // ****
-
 const { btcPrice, balance, orders } = await BinanceTrading("BTCUSDT"); //initiate data
 console.log(btcPrice, balance);
+
 client.once("ready", async () => {
   console.log("Ready!");
   playChannel = client.channels.cache.find(
@@ -57,6 +38,7 @@ client.on("message", async (message) => {
     // console.log(message)
     // console.log("pair", pair)
     playChannel.send("Pong.");
+    // foobar();
   } else if (message.content === "!callingCZ") {
     //check balance
     playChannel.send(`this is CZ ${ticker}`);
@@ -73,24 +55,12 @@ client.on("message", async (message) => {
     );
     botMessage += `hit !cancelAllOrders to cancel all open orders`;
     playChannel.send(botMessage);
-  } else if (message.content === "!togglebot") {
-    //switch bot on/off
-    if (botStatus) {
-      botStatus = false;
-      playChannel.send(
-        `bot is off now. Current budget is ${botConfig.initialBudget}.`
-      );
-    } else {
-      botStatus = true;
-      playChannel.send(
-        `bot is running now. The default setting is: initial budget ${botConfig.initialBudget}; max single order ${botConfig.maxOrder}`
-      );
-    }
+  } else if (message.content.includes("!togglebot")) {
+    // playChannel.send(toggleBot());
+    console.log(toggleBot());
   } else if (message.content.includes("!pushMessage")) {
-    const webhook = new WebhookClient(
-      851959636785496135n,
-      "7dlAHw1y_IpHP-n-cuoiqxjCJrmg1uKv0DVBY_WUFZF99xL9dCDEk094tu-00qI1dOjx"
-    );
+    const webhookKey = process.env["DISCORD_WEBHOOK"];
+    const webhook = new WebhookClient(858094812120612874n, webhookKey);
     try {
       const response = await webhook.send(
         message.content.substring(13, message.content.length - 1)
@@ -111,79 +81,7 @@ client.on("message", async (message) => {
       vol: parseFloat(temp[4]).toFixed(2),
     };
     console.log("signal is", signal);
-    if (botStatus) {
-      //check binance price
-      const spotPrice = await checkSingle(signal.ticker);
-      console.log("spot price is", spotPrice);
-      //check available balance & budget
-      // const availBal = parseFloat(accountBalance.find(e => e.symbol === "USDT").available).toFixed(2);
-      const availBal = botConfig.initialBudget; //use this for virtual run
-      const threshold = 0.03; //default threshold is 3%
-      if (signal.type.toUpperCase() === "BUY") {
-        if (
-          parseFloat(spotPrice[signal.ticker]).toFixed(5) <=
-          parseFloat(signal.price) * (1 + threshold)
-        ) {
-          //buy the ticker or its corresponding leverage token on binance
-          if (signal.ticker.includes("UPUSDT")) {
-            //it's a leverage token
-            botConfig.botHolding.push({
-              ticker: signal.ticker,
-              price: spotPrice[signal.ticker],
-              amount: botConfig.maxOrder / spotPrice[signal.ticker],
-            });
-            botConfig.initialBudget -= botConfig.maxOrder;
-            playChannel.send(
-              `bot is buying ${signal.ticker} @ spot price ${parseFloat(
-                spotPrice[signal.ticker]
-              ).toFixed(2)} - total amount ${parseFloat(
-                botConfig.maxOrder / spotPrice[signal.ticker]
-              ).toFixed(2)}`
-            );
-          } else {
-            //not a leverage token
-            console.log("It's not a leverage token");
-          }
-        }
-      } else {
-        //type sell
-        if (
-          parseFloat(spotPrice[signal.ticker]).toFixed(5) >=
-          parseFloat(signal.price) * (1 + threshold)
-        ) {
-          //buy the ticker or its corresponding leverage token on binance
-          if (signal.ticker.includes("DOWNUSDT")) {
-            //it's a leverage token
-            botConfig.botHolding.push({
-              ticker: signal.ticker,
-              price: spotPrice[signal.ticker],
-              amount: botConfig.maxOrder / spotPrice[signal.ticker],
-            });
-            botConfig.initialBudget -= botConfig.maxOrder;
-            playChannel.send(
-              `bot is buying ${signal.ticker} @ spot price ${parseFloat(
-                spotPrice[signal.ticker]
-              ).toFixed(2)} - total amount ${parseFloat(
-                botConfig.maxOrder / spotPrice[signal.ticker]
-              ).toFixed(2)}`
-            );
-          } else {
-            //not a leverage token
-            console.log("It's not a leverage token");
-          }
-        }
-      }
-      console.log(botConfig);
-      let botMessage = "Bot is holding: \n";
-      botConfig.botHolding.forEach(
-        (e) =>
-          (botMessage += `${e.ticker} @ ${parseFloat(e.price).toFixed(
-            2
-          )} - total amount ${parseFloat(e.amount).toFixed(2)} \n`)
-      );
-      botMessage += `Total budget ${botConfig.initialBudget}`;
-      playChannel.send(botMessage);
-    }
+    botController(signal);
   }
 });
 

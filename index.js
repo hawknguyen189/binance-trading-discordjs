@@ -71,7 +71,8 @@ client.on("message", async (message) => {
       console.log("error when sending webhook message", e);
     }
   } else if (message.content === "!checkbot") {
-    console.log(checkBot());
+    const message = await checkBot();
+    console.log("checkbot", message);
   } else if (message.webhookID) {
     const temp = message.content.split(" ");
     const signal = {

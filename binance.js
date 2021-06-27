@@ -9,9 +9,17 @@ const binance = new Binance().options({
 });
 
 class botConfig {
-  constructor(initialBudget, maxOrder, botHolding, status, botType) {
+  constructor(
+    initialBudget,
+    currentBudget,
+    maxOrder,
+    botHolding,
+    status,
+    botType
+  ) {
     //constructor function
     this.initialBudget = initialBudget;
+    this.currentBudget = currentBudget;
     this.maxOrder = maxOrder;
     this.botHolding = botHolding;
     this.status = status;
@@ -23,11 +31,10 @@ class botConfig {
 let botStatus = false;
 let marketsPrice = {};
 let subList = {};
-let bot15m = new botConfig(1000, 200, [], "AVAILABLE", "15m");
-let bot30m = new botConfig(1000, 200, [], "AVAILABLE", "30m");
-let bot1h = new botConfig(1000, 200, [], "AVAILABLE", "1h");
-let bot4h = new botConfig(1000, 200, [], "AVAILABLE", "4h");
-
+let bot15m = new botConfig(1000, 1000, 200, [], "AVAILABLE", "15m");
+let bot30m = new botConfig(1000, 1000, 200, [], "AVAILABLE", "30m");
+let bot1h = new botConfig(1000, 1000, 200, [], "AVAILABLE", "1h");
+let bot4h = new botConfig(1000, 1000, 200, [], "AVAILABLE", "4h");
 //**************** */
 //configuring and running bots
 const toggleBot = async () => {
@@ -36,112 +43,138 @@ const toggleBot = async () => {
   if (botStatus) {
     botStatus = false;
     await terminateWebsocket("!miniTicker@arr");
+    console.log("turning off bot");
     // response = `bot is off now. Current budget is ${botConfig.initialBudget}.`;
   } else {
     botStatus = true;
     await websocketMiniTicker("BTCUSDT");
+    console.log("turning on bot");
     // response = `bot is running now. The default setting is: initial budget ${botConfig.initialBudget}; max single order ${botConfig.maxOrder}`;
   }
   return response;
 };
 
 const checkBot = async () => {
-  return botStatus
-    ? `bot is running, websocket ${Object.keys(subList)[0]}`
-    : "bot is not running";
+  let message = {
+    bot15m: `${bot15m.currentBudget} ${bot15m.status} `,
+    bot30m: `${bot30m.currentBudget} ${bot30m.status} `,
+    bot1h: `${bot1h.currentBudget} ${bot1h.status} `,
+    bot4h: `${bot4h.currentBudget} ${bot4h.status} `,
+  };
+  bot15m.botHolding.forEach(
+    (e) =>
+      (message.bot15m += `${e.ticker} @ ${parseFloat(e.price).toFixed(
+        2
+      )} - total amount ${parseFloat(e.amount).toFixed(5)} \n`)
+  );
+  bot30m.botHolding.forEach(
+    (e) =>
+      (message.bot30m += `${e.ticker} @ ${parseFloat(e.price).toFixed(
+        2
+      )} - total amount ${parseFloat(e.amount).toFixed(5)} \n`)
+  );
+  bot1h.botHolding.forEach(
+    (e) =>
+      (message.bot1h += `${e.ticker} @ ${parseFloat(e.price).toFixed(
+        2
+      )} - total amount ${parseFloat(e.amount).toFixed(5)} \n`)
+  );
+  bot4h.botHolding.forEach(
+    (e) =>
+      (message.bot4h += `${e.ticker} @ ${parseFloat(e.price).toFixed(
+        2
+      )} - total amount ${parseFloat(e.amount).toFixed(5)} \n`)
+  );
+  return botStatus ? message : "bot is not running";
 };
-
+ 
 const botController = async (signal) => {
   let message = { buyingLog: "", botHolding: "" };
-  if (botStatus && signal.interval.length < 6) {
-    switch (parseInt(signal.interval)) {
-      case 15:
-        signal.interval = "15m";
-        break;
-      case 30:
-        signal.interval = "30m";
-        break;
-      case 60:
-        signal.interval = "1h";
-        break;
-    }
+  let foundBot = {};
+  switch (parseInt(signal.interval)) {
+    case 15:
+      signal.interval = "15m";
+      break;
+    case 30:
+      signal.interval = "30m";
+      break;
+    case 60:
+      signal.interval = "1h";
+      break;
+  }
+  if (signal.interval.length < 6) {
+    foundBot = eval("bot" + signal.interval);
+  }
+  if (botStatus && foundBot) {
     //check binance price
-    let spotPrice = marketsPrice[signal.ticker].close;
-    const foundBot = eval("bot" + signal.interval);
+    let spotPrice = parseFloat(marketsPrice[signal.ticker].close).toFixed(2);
     //check available balance & budget
     // const availBal = parseFloat(accountBalance.find(e => e.symbol === "USDT").available).toFixed(2);
-    const availBal = foundbot.initialBudget; //use this for virtual run
+    const availBal = foundBot.currentBudget; //use this for virtual run
     const threshold = 0.03; //default threshold is 3%
 
     if (signal.type.toUpperCase() === "BUY") {
       //buy signal
       if (foundBot.status.toUpperCase() === "SELL") {
         //BOT is holding SELL order => liquidate all current SELL orders
-        foundbot.botHolding.forEach((e) => {
-          const orderValue = e.amount * spotPrice[signal.ticker] - e.borrow;
-          foundbot.initialBudget += orderValue; //profit/loss realized
-          console.log(orderValue);
+        foundBot.botHolding.forEach((e) => {
+          const orderValue =
+            e.amount * (e.price - spotPrice) + foundBot.maxOrder;
+          foundBot.currentBudget += orderValue; //profit/loss realized
+          console.log(spotPrice);
         });
-        foundbot.botHolding = [];
+        foundBot.botHolding = [];
       } //status if
-      if (
-        parseFloat(spotPrice[signal.ticker]).toFixed(5) <=
-        parseFloat(signal.price) * (1 + threshold)
-      ) {
-        foundbot.botHolding.push({
+      if (spotPrice <= parseFloat(signal.price) * (1 + threshold)) {
+        foundBot.botHolding.push({
           ticker: signal.ticker,
-          price: spotPrice[signal.ticker],
-          amount: (foundbot.maxOrder * 3) / spotPrice[signal.ticker], //margin x3
-          borrow: foundbot.maxOrder * 2,
+          price: spotPrice,
+          amount: (foundBot.maxOrder * 3) / spotPrice, //margin x3
+          borrow: foundBot.maxOrder * 2,
         });
-        foundbot.initialBudget -= foundbot.maxOrder;
+        foundBot.currentBudget -= foundBot.maxOrder;
+        foundBot.status = "BUY";
         message.buyingLog = `${foundBot.botType} - bot is buying ${
           signal.ticker
-        } @ spot price ${parseFloat(spotPrice[signal.ticker]).toFixed(
-          2
-        )} - total amount ${parseFloat(
-          foundbot.maxOrder / spotPrice[signal.ticker]
-        ).toFixed(2)}`;
+        } @ spot price ${spotPrice} - total amount ${parseFloat(
+          (foundBot.maxOrder * 3) / spotPrice
+        ).toFixed(5)}`;
       }
     } else {
       //type sell
-      if (foundBot.status.toUpperCase() === "SELL") {
+      if (foundBot.status.toUpperCase() === "BUY") {
         //BOT is holding BUY order => liquidate all current BUY orders
-        foundbot.botHolding.forEach((e) => {
-          const orderValue = e.amount * e.price - e.borrow;
-          foundbot.initialBudget += orderValue; //profit/loss realized
-          console.log(orderValue);
+        foundBot.botHolding.forEach((e) => {
+          const orderValue = e.amount * spotPrice - e.borrow;
+          foundBot.currentBudget += orderValue; //profit/loss realized
+          console.log(spotPrice);
         });
-        foundbot.botHolding = [];
+        foundBot.botHolding = [];
       } //status if
-      if (
-        parseFloat(spotPrice[signal.ticker]).toFixed(5) >=
-        parseFloat(signal.price) * (1 + threshold)
-      ) {
-        foundbot.botHolding.push({
+      if (spotPrice >= parseFloat(signal.price) * (1 - threshold)) {
+        foundBot.botHolding.push({
           ticker: signal.ticker,
-          price: spotPrice[signal.ticker],
-          amount: (foundbot.maxOrder * 3) / spotPrice[signal.ticker], //margin x3
-          borrow: foundbot.maxOrder * 2,
+          price: spotPrice,
+          amount: (foundBot.maxOrder * 3) / spotPrice, //margin x3
+          borrow: foundBot.maxOrder * 2,
         });
-        foundbot.initialBudget -= foundbot.maxOrder;
-        message.buyingLog = `${foundBot.botType} - bot is buying ${
+        foundBot.currentBudget -= foundBot.maxOrder;
+        foundBot.status = "SELL";
+        message.buyingLog = `${foundBot.botType} - bot is selling ${
           signal.ticker
-        } @ spot price ${parseFloat(spotPrice[signal.ticker]).toFixed(
-          2
-        )} - total amount ${parseFloat(
-          foundbot.maxOrder / spotPrice[signal.ticker]
-        ).toFixed(2)}`;
+        } @ spot price ${spotPrice} - total amount ${parseFloat(
+          (foundBot.maxOrder * 3) / spotPrice
+        ).toFixed(5)}`;
       }
     }
-    console.log(foundBot);
-    foundbot.botHolding.forEach(
+    console.log("finished", foundBot);
+    foundBot.botHolding.forEach(
       (e) =>
-        (message.botMessage += `${e.ticker} @ ${parseFloat(e.price).toFixed(
+        (message.botHolding += `${e.ticker} @ ${parseFloat(e.price).toFixed(
           2
-        )} - total amount ${parseFloat(e.amount).toFixed(2)} \n`)
+        )} - total amount ${parseFloat(e.amount).toFixed(5)} \n`)
     );
-    message.botMessage += `Total budget ${foundbot.initialBudget} - ${foundBot.botType}`;
+    message.botHolding += `Total budget ${foundBot.currentBudget} - ${foundBot.botType}`;
   }
   return message;
 };
@@ -217,7 +250,7 @@ const websocketMiniTicker = async (ticker) => {
     const response = await binance.websockets.miniTicker((markets) => {
       marketsPrice = { ...markets };
       // trailingStop(markets[ticker].close);
-      console.log(markets[ticker]?.close);
+      // console.log(markets[ticker]?.close);
     });
     subList = await binance.websockets.subscriptions();
   } catch (e) {

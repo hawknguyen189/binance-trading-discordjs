@@ -9,11 +9,12 @@ const binance = new Binance().options({
 });
 
 class botConfig {
-  constructor(initialBudget, maxOrder, botHolding, botType) {
+  constructor(initialBudget, maxOrder, botHolding, status, botType) {
     //constructor function
     this.initialBudget = initialBudget;
     this.maxOrder = maxOrder;
     this.botHolding = botHolding;
+    this.status = status;
     this.botType = botType;
   }
 }
@@ -22,10 +23,10 @@ class botConfig {
 let botStatus = false;
 let marketsPrice = {};
 let subList = {};
-let bot15m = new botConfig(1000, 200, [], "15m");
-let bot30m = new botConfig(1000, 200, [], "30m");
-let bot1h = new botConfig(1000, 200, [], "1h");
-let bot4h = new botConfig(1000, 200, [], "4h");
+let bot15m = new botConfig(1000, 200, [], "AVAILABLE", "15m");
+let bot30m = new botConfig(1000, 200, [], "AVAILABLE", "30m");
+let bot1h = new botConfig(1000, 200, [], "AVAILABLE", "1h");
+let bot4h = new botConfig(1000, 200, [], "AVAILABLE", "4h");
 
 //**************** */
 //configuring and running bots
@@ -51,6 +52,7 @@ const checkBot = async () => {
 };
 
 const botController = async (signal) => {
+  let message = { buyingLog: "", botHolding: "" };
   if (botStatus && signal.interval.length < 6) {
     switch (parseInt(signal.interval)) {
       case 15:
@@ -65,78 +67,83 @@ const botController = async (signal) => {
     }
     //check binance price
     let spotPrice = marketsPrice[signal.ticker].close;
-    console.log("spot price is", spotPrice);
-    console.log("interval is", signal.interval);
     const foundBot = eval("bot" + signal.interval);
     //check available balance & budget
     // const availBal = parseFloat(accountBalance.find(e => e.symbol === "USDT").available).toFixed(2);
     const availBal = foundbot.initialBudget; //use this for virtual run
     const threshold = 0.03; //default threshold is 3%
+
     if (signal.type.toUpperCase() === "BUY") {
+      //buy signal
+      if (foundBot.status.toUpperCase() === "SELL") {
+        //BOT is holding SELL order => liquidate all current SELL orders
+        foundbot.botHolding.forEach((e) => {
+          const orderValue = e.amount * spotPrice[signal.ticker] - e.borrow;
+          foundbot.initialBudget += orderValue; //profit/loss realized
+          console.log(orderValue);
+        });
+        foundbot.botHolding = [];
+      } //status if
       if (
         parseFloat(spotPrice[signal.ticker]).toFixed(5) <=
         parseFloat(signal.price) * (1 + threshold)
       ) {
-        //buy the ticker or its corresponding leverage token on binance
-        if (signal.ticker.includes("UPUSDT")) {
-          //it's a leverage token
-          foundbot.botHolding.push({
-            ticker: signal.ticker,
-            price: spotPrice[signal.ticker],
-            amount: foundbot.maxOrder / spotPrice[signal.ticker],
-          });
-          foundbot.initialBudget -= foundbot.maxOrder;
-          playChannel.send(
-            `bot is buying ${signal.ticker} @ spot price ${parseFloat(
-              spotPrice[signal.ticker]
-            ).toFixed(2)} - total amount ${parseFloat(
-              foundbot.maxOrder / spotPrice[signal.ticker]
-            ).toFixed(2)}`
-          );
-        } else {
-          //not a leverage token
-          console.log("It's not a leverage token");
-        }
+        foundbot.botHolding.push({
+          ticker: signal.ticker,
+          price: spotPrice[signal.ticker],
+          amount: (foundbot.maxOrder * 3) / spotPrice[signal.ticker], //margin x3
+          borrow: foundbot.maxOrder * 2,
+        });
+        foundbot.initialBudget -= foundbot.maxOrder;
+        message.buyingLog = `${foundBot.botType} - bot is buying ${
+          signal.ticker
+        } @ spot price ${parseFloat(spotPrice[signal.ticker]).toFixed(
+          2
+        )} - total amount ${parseFloat(
+          foundbot.maxOrder / spotPrice[signal.ticker]
+        ).toFixed(2)}`;
       }
     } else {
       //type sell
+      if (foundBot.status.toUpperCase() === "SELL") {
+        //BOT is holding BUY order => liquidate all current BUY orders
+        foundbot.botHolding.forEach((e) => {
+          const orderValue = e.amount * e.price - e.borrow;
+          foundbot.initialBudget += orderValue; //profit/loss realized
+          console.log(orderValue);
+        });
+        foundbot.botHolding = [];
+      } //status if
       if (
         parseFloat(spotPrice[signal.ticker]).toFixed(5) >=
         parseFloat(signal.price) * (1 + threshold)
       ) {
-        //buy the ticker or its corresponding leverage token on binance
-        if (signal.ticker.includes("DOWNUSDT")) {
-          //it's a leverage token
-          foundbot.botHolding.push({
-            ticker: signal.ticker,
-            price: spotPrice[signal.ticker],
-            amount: foundbot.maxOrder / spotPrice[signal.ticker],
-          });
-          foundbot.initialBudget -= foundbot.maxOrder;
-          playChannel.send(
-            `bot is buying ${signal.ticker} @ spot price ${parseFloat(
-              spotPrice[signal.ticker]
-            ).toFixed(2)} - total amount ${parseFloat(
-              foundbot.maxOrder / spotPrice[signal.ticker]
-            ).toFixed(2)}`
-          );
-        } else {
-          //not a leverage token
-          console.log("It's not a leverage token");
-        }
+        foundbot.botHolding.push({
+          ticker: signal.ticker,
+          price: spotPrice[signal.ticker],
+          amount: (foundbot.maxOrder * 3) / spotPrice[signal.ticker], //margin x3
+          borrow: foundbot.maxOrder * 2,
+        });
+        foundbot.initialBudget -= foundbot.maxOrder;
+        message.buyingLog = `${foundBot.botType} - bot is buying ${
+          signal.ticker
+        } @ spot price ${parseFloat(spotPrice[signal.ticker]).toFixed(
+          2
+        )} - total amount ${parseFloat(
+          foundbot.maxOrder / spotPrice[signal.ticker]
+        ).toFixed(2)}`;
       }
     }
     console.log(foundBot);
-    let botMessage = "Bot is holding: \n";
-    // foundbot.botHolding.forEach(
-    //   (e) =>
-    //     (botMessage += `${e.ticker} @ ${parseFloat(e.price).toFixed(
-    //       2
-    //     )} - total amount ${parseFloat(e.amount).toFixed(2)} \n`)
-    // );
-    // botMessage += `Total budget ${foundbot.initialBudget}`;
-    return botMessage;
+    foundbot.botHolding.forEach(
+      (e) =>
+        (message.botMessage += `${e.ticker} @ ${parseFloat(e.price).toFixed(
+          2
+        )} - total amount ${parseFloat(e.amount).toFixed(2)} \n`)
+    );
+    message.botMessage += `Total budget ${foundbot.initialBudget} - ${foundBot.botType}`;
   }
+  return message;
 };
 
 //calling Binance API

@@ -37,6 +37,7 @@ client.on("message", async (message) => {
     // send back "Pong." to the channel the message was sent in
     // console.log(message)
     // console.log("pair", pair)
+    console.log(message.content);
     playChannel.send("Pong.");
     // foobar();
   } else if (message.content === "!callingCZ") {
@@ -71,9 +72,7 @@ client.on("message", async (message) => {
     }
   } else if (message.content === "!checkbot") {
     console.log(checkBot());
-  }
-  if (message.webhookID) {
-    // console.log(message.content)
+  } else if (message.webhookID) {
     const temp = message.content.split(" ");
     const signal = {
       type: temp[0].substring(1),
@@ -83,7 +82,9 @@ client.on("message", async (message) => {
       vol: parseFloat(temp[4]).toFixed(2),
     };
     console.log("signal is", signal);
-    botController(signal);
+    const botMessage = await botController(signal);
+    console.log(botMessage.buyingLog);
+    console.log(botMessage.botHolding);
   }
 });
 

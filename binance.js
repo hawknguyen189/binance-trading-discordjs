@@ -87,7 +87,7 @@ const checkBot = async () => {
   );
   return botStatus ? message : "bot is not running";
 };
- 
+
 const botController = async (signal) => {
   let message = { buyingLog: "", botHolding: "" };
   let foundBot = {};
@@ -101,6 +101,9 @@ const botController = async (signal) => {
     case 60:
       signal.interval = "1h";
       break;
+    case 240:
+      signal.interval = "4h";
+      break;
   }
   if (signal.interval.length < 6) {
     foundBot = eval("bot" + signal.interval);
@@ -108,6 +111,9 @@ const botController = async (signal) => {
   if (botStatus && foundBot) {
     //check binance price
     let spotPrice = parseFloat(marketsPrice[signal.ticker].close).toFixed(2);
+    spotPrice = spotPrice
+      ? spotPrice
+      : parseFloat(await checkSingle(signal.ticker)).toFixed(2);
     //check available balance & budget
     // const availBal = parseFloat(accountBalance.find(e => e.symbol === "USDT").available).toFixed(2);
     const availBal = foundBot.currentBudget; //use this for virtual run
@@ -218,33 +224,48 @@ const cancelAllOrders = async (symbol) => {
   await binance.cancelAll(symbol);
 };
 
-const trailingStop = (price) => {
-  console.log("inside trailing stop", price);
+const trailingStop = (bot, price) => {
+  // decide to sell at trailing stop price ?
+  if (
+    tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] >=
+    trailingStop[symbol].marketPrice
+  ) {
+    callMarketSell({
+      symbol: symbol,
+      qty: parseFloat(
+        Math.floor(
+          balance[trailingStop[symbol].balanceIndex]["available"] * 100
+        ) / 100 //floor will round to the lowest integer
+      ),
+    });
+    tempArr[trailingStop[symbol].purchasePriceIndex]["runTrailing"] = false;
+    tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] = 0;
+  } else {
+    if (
+      trailingStop[symbol].marketPrice >=
+      trailingStop[symbol].boughtPrice * (1 + trailingUp / 100)
+    ) {
+      if (
+        tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] <
+        trailingStop[symbol].marketPrice * (1 - trailingDown / 100)
+      ) {
+        // only update new trailing price if the new one higher than prev one
+        //aim to maximize profit on stop loss
+        tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] = (
+          trailingStop[symbol].marketPrice *
+          (1 - trailingDown / 100)
+        ).toFixed(5);
+      }
+    } else {
+      tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] = (
+        trailingStop[symbol].boughtPrice *
+        (1 - trailingDown / 100)
+      ).toFixed(5);
+    }
+  }
 };
 
 const websocketMiniTicker = async (ticker) => {
-  // this call future ticker stream
-  //   const foo = await binance.futuresMiniTickerStream(ticker, (response) => {
-  //     console.log(response, new Date().toLocaleTimeString());
-  //   });
-  //this will call complete 500 recent chart
-  //   binance.websockets.chart(ticker, "1m", (symbol, interval, chart) => {
-  //     let tick = binance.last(chart);
-  //     const last = chart[tick].close;
-  //     // console.info(chart);
-  //     // Optionally convert 'chart' object to array:
-  //     // let ohlc = binance.ohlc(chart);
-  //     // console.info(symbol, ohlc);
-  //     console.info(
-  //       symbol + " last price: " + last,
-  //       new Date().toLocaleTimeString()
-  //     );
-  //   });
-
-  //   we only need simple spot price for a symbol so use this one
-  //   binance.websockets.bookTickers(ticker, (response) => {
-  //     console.log(response, new Date().toLocaleTimeString());
-  //   });
   //no weight limit on websocket but 5 live stream/ip
   try {
     const response = await binance.websockets.miniTicker((markets) => {

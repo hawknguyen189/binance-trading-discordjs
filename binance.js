@@ -134,7 +134,7 @@ const botController = async (signal) => {
       if (spotPrice <= parseFloat(signal.price) * (1 + threshold)) {
         foundBot.botHolding.push({
           ticker: signal.ticker,
-          price: spotPrice,
+          price: parseFloat(spotPrice),
           amount: (foundBot.maxOrder * 3) / spotPrice, //margin x3
           borrow: foundBot.maxOrder * 2,
         });
@@ -224,45 +224,48 @@ const cancelAllOrders = async (symbol) => {
   await binance.cancelAll(symbol);
 };
 
-const trailingStop = (bot, price) => {
-  // decide to sell at trailing stop price ?
-  if (
-    tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] >=
-    trailingStop[symbol].marketPrice
-  ) {
-    callMarketSell({
-      symbol: symbol,
-      qty: parseFloat(
-        Math.floor(
-          balance[trailingStop[symbol].balanceIndex]["available"] * 100
-        ) / 100 //floor will round to the lowest integer
-      ),
-    });
-    tempArr[trailingStop[symbol].purchasePriceIndex]["runTrailing"] = false;
-    tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] = 0;
+const callMarketSell = (bot, index, marketPrice) => {
+  const order = bot.botHolding[index];
+  console.log(
+    `trailingstop selling at ${marketPrice} this quantity ${order.amount} bought at ${order.price}`
+  );
+  if (bot.status.toUpperCase() === "SELL") {
+    //BOT is holding SELL order => liquidate all current SELL orders
+    const orderValue =
+      order.amount * (order.price - marketPrice) + bot.maxOrder;
+    bot.currentBudget += orderValue; //profit/loss realized
+    bot.botHolding.splice(index, 1);
   } else {
-    if (
-      trailingStop[symbol].marketPrice >=
-      trailingStop[symbol].boughtPrice * (1 + trailingUp / 100)
-    ) {
-      if (
-        tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] <
-        trailingStop[symbol].marketPrice * (1 - trailingDown / 100)
-      ) {
-        // only update new trailing price if the new one higher than prev one
-        //aim to maximize profit on stop loss
-        tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] = (
-          trailingStop[symbol].marketPrice *
-          (1 - trailingDown / 100)
-        ).toFixed(5);
-      }
+    //BOT is holding BUY order => liquidate all current BUY orders
+    const orderValue = order.amount * marketPrice - order.borrow;
+    bot.currentBudget += orderValue; //profit/loss realized
+    bot.botHolding.splice(index, 1);
+  } //status if
+};
+
+const trailingStop = (bot, marketPrice) => {
+  const trailingDown = 0.05;
+  bot.botHolding.forEach((e, index) => {
+    // decide to sell at trailing stop price ?
+    if (!e.trailingPrice) {
+      e.trailingPrice = parseFloat(e.price * (1 - trailingDown));
     } else {
-      tempArr[trailingStop[symbol].purchasePriceIndex]["trailingPrice"] = (
-        trailingStop[symbol].boughtPrice *
-        (1 - trailingDown / 100)
-      ).toFixed(5);
+      if (e.trailingPrice >= marketPrice) {
+        //sell if trailing stop price is higher than current price
+        callMarketSell(bot, index, marketPrice);
+      } else {
+        if (marketPrice >= e.price) {
+          if (e.trailingPrice < marketPrice * (1 - trailingDown)) {
+            // only update new trailing price if the new one higher than prev one
+            //aim to maximize profit on stop loss
+            e.trailingPrice = parseFloat(marketPrice * (1 - trailingDown));
+          }
+        } else {
+          e.trailingPrice = parseFloat(e.price * (1 - trailingDown));
+        }
+      }
     }
-  }
+  }); //end foreach loop
 };
 
 const websocketMiniTicker = async (ticker) => {
@@ -270,7 +273,18 @@ const websocketMiniTicker = async (ticker) => {
   try {
     const response = await binance.websockets.miniTicker((markets) => {
       marketsPrice = { ...markets };
-      // trailingStop(markets[ticker].close);
+      if (bot15m.status.toUpperCase() !== "AVAILABLE") {
+        trailingStop(bot15m, markets[ticker].close);
+      }
+      if (bot30m.status.toUpperCase() !== "AVAILABLE") {
+        trailingStop(bot30m, markets[ticker].close);
+      }
+      if (bot1h.status.toUpperCase() !== "AVAILABLE") {
+        trailingStop(bot1h, markets[ticker].close);
+      }
+      if (bot4h.status.toUpperCase() !== "AVAILABLE") {
+        trailingStop(bot4h, markets[ticker].close);
+      }
       // console.log(markets[ticker]?.close);
     });
     subList = await binance.websockets.subscriptions();
